@@ -29,9 +29,10 @@ interface GameBoardProps {
 
 const TILE_H_WIDTH = 96;
 const TILE_V_WIDTH = 48;
-const TILE_GAP = 4;
+const TILE_GAP = 6;
 const BUTTON_WIDTH = 84;
 const BUTTON_GAP = 10;
+const SNAKE_THRESHOLD = 8; // Start snaking after this many tiles
 
 export const GameBoard: React.FC<GameBoardProps> = ({
   board,
@@ -80,7 +81,38 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const showLeftSlot = isMyTurn && selectedTile && validEndsForSelected.includes('left');
   const showRightSlot = isMyTurn && selectedTile && validEndsForSelected.includes('right');
 
-  // Unscaled length of chain
+  // Calculate snake segments for wrapping layout
+  const snakeSegments = useMemo(() => {
+    if (board.length === 0) return [];
+    
+    const segments: { tile: DominoTile; index: number; isDouble: boolean }[][] = [];
+    let currentSegment: { tile: DominoTile; index: number; isDouble: boolean }[] = [];
+    let segmentLength = 0;
+    const maxSegmentLength = isVertical 
+      ? Math.max(6, Math.floor((containerSize.height - 80) / (TILE_H_WIDTH + TILE_GAP)))
+      : Math.max(6, Math.floor((containerSize.width - 80) / (TILE_H_WIDTH + TILE_GAP)));
+
+    board.forEach((tile, idx) => {
+      const dbl = isDouble(tile);
+      const tileLen = dbl ? TILE_V_WIDTH : TILE_H_WIDTH;
+      
+      if (segmentLength + tileLen > (isVertical ? containerSize.height * 0.75 : containerSize.width * 0.75) && currentSegment.length >= SNAKE_THRESHOLD) {
+        if (currentSegment.length > 0) segments.push(currentSegment);
+        currentSegment = [];
+        segmentLength = 0;
+      }
+      
+      currentSegment.push({ tile, index: idx, isDouble: dbl });
+      segmentLength += tileLen + TILE_GAP;
+    });
+    
+    if (currentSegment.length > 0) segments.push(currentSegment);
+    return segments;
+  }, [board, isVertical, containerSize.width, containerSize.height]);
+
+  const needsSnaking = snakeSegments.length > 1 || board.length > SNAKE_THRESHOLD;
+
+  // Unscaled length of chain (for scale calculation)
   const unscaledChainLength = useMemo(() => {
     if (board.length === 0) return 200;
 
@@ -99,8 +131,30 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [board, showLeftSlot, showRightSlot]);
 
   // Compute zoom-out scale so entire chain fits comfortably in the available space
+  // With snaking, we reduce the scale less aggressively
   const scale = useMemo(() => {
     if (board.length === 0) return 1.0;
+
+    if (needsSnaking) {
+      // When snaking is active, we only need to fit one segment at a time
+      const segmentSize = needsSnaking 
+        ? (isVertical ? containerSize.height * 0.7 : containerSize.width * 0.7)
+        : unscaledChainLength;
+      
+      if (isVertical) {
+        const availH = Math.max(containerSize.height - 60, 140);
+        const availW = Math.max(containerSize.width - 32, 100);
+        const scaleY = availH / Math.min(segmentSize, availH);
+        const scaleX = availW / 100;
+        return Math.max(0.5, Math.min(1.0, Number(Math.min(scaleX, scaleY, 1.0).toFixed(3))));
+      } else {
+        const availW = Math.max(containerSize.width - 32, 160);
+        const availH = Math.max(containerSize.height - 52, 90);
+        const scaleX = availW / Math.min(segmentSize, availW);
+        const scaleY = availH / 100;
+        return Math.max(0.5, Math.min(1.0, Number(Math.min(scaleX, scaleY, 1.0).toFixed(3))));
+      }
+    }
 
     if (isVertical) {
       // Running along the taller vertical axis
@@ -123,7 +177,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       const optimalScale = Math.min(scaleX, scaleY, 1.0);
       return Math.max(0.18, Math.min(1.0, Number(optimalScale.toFixed(3))));
     }
-  }, [isVertical, board.length, unscaledChainLength, containerSize.width, containerSize.height]);
+  }, [isVertical, board.length, unscaledChainLength, containerSize.width, containerSize.height, needsSnaking]);
 
   const toggleOrientation = () => {
     setOrientationMode((prev) => {
