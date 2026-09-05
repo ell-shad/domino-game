@@ -1,0 +1,8 @@
+{
+  "name": "Dominoes Online",
+  "description": "A minimalist real-time two-player domino game for playing with friends via room codes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
